@@ -1,23 +1,22 @@
-from fastapi import APIRouter, FastAPI, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query
 from dtos import RequisicaoProduto
 from models import Produto
 from product_service import ProdutosService
-from typing import List,Optional
+from typing import Optional
 
-app = FastAPI()
+
 router = APIRouter()
 produto_service = ProdutosService()
 
-app.include_router(router, prefix="/api/geek")
 
 # Create
-@router.post("/produtos/", response_model=Produto)
-def create_produto(produto: RequisicaoProduto, qt_estoque: int):
+@router.post("/produtos/", response_model=RequisicaoProduto)  # Use RequisicaoProduto aqui
+def create_produto(produto: RequisicaoProduto):
     db_produto = Produto(
         nome=produto.nome,
         descricao=produto.descricao,
         preco=produto.preco,
-        qt_estoque=qt_estoque,
+        qt_estoque=0,  # Ou qualquer valor padrão que você queira
         categoria=produto.categoria,
         franquia=produto.franquia
     )
@@ -31,8 +30,7 @@ def produto_detail(id: int):
         raise HTTPException(status_code=404, detail="Produto não encontrado")
     return produto
 
-""" Permitir a filtragem de produtos por nome, preço, categoria ou franquia. """
-#List
+#List with filters
 @router.get("/produtos/", response_model=list[Produto])
 def list_produtos(
     nome: Optional[str] = Query(None, description="Nome do produto"),
@@ -57,3 +55,36 @@ def selecionar_produto(produto_id: int, qt_estoque: Optional[int] = None):
         return {"message": "Produto selecionado com sucesso", "produto": produto}
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+    
+# Atualizar estoque (venda ou reposição)
+@router.put("/produtos/{produto_id}/estoque/")
+def atualizar_estoque(produto_id: int, quantidade: int):
+    produto = produto_service.get_produto_by_id(produto_id)
+    if produto is None:
+        raise HTTPException(status_code=404, detail="Produto não encontrado")
+
+    if quantidade < 0:
+        if produto.qt_estoque + quantidade < 0:
+            raise HTTPException(status_code=400, detail="Estoque insuficiente para a venda")
+        produto.qt_estoque += quantidade  
+        operacao = "vendido"
+    else:
+        produto.qt_estoque += quantidade 
+        operacao = "reposto"
+
+    produto_service.update_produto(produto)
+
+    return {"message": f"Estoque {operacao} com sucesso", "produto": produto}
+
+# Excluir produto
+@router.delete("/produtos/{produto_id}/", status_code=204)
+def excluir_produto(produto_id: int):
+    produto = produto_service.get_produto_by_id(produto_id)
+    if produto is None:
+        raise HTTPException(status_code=404, detail="Produto não encontrado")
+    
+    if produto.qt_estoque > 0:
+        raise HTTPException(status_code=400, detail="Produto não pode ser excluído enquanto tiver estoque.")
+
+    produto_service.delete_produto(produto_id)
+    return {"message": "Produto excluído com sucesso"}

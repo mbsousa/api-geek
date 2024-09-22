@@ -6,7 +6,6 @@ app = FastAPI()
 
 @app.on_event("startup")
 def startup_event():
-    init_db()  # Inicializa o banco de dados
+    init_db()  
 
-# Inclui o roteador definido em main.py
 app.include_router(router, prefix='/api/geek')
